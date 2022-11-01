@@ -1,0 +1,8 @@
+<library path="lib/libdraco3_nodelet">
+    <class name="draco3_nodelet/Draco3Nodelet" type="draco3_nodelet::Draco3Nodelet" base_class_type="nodelet::Nodelet">
+        <description>
+            This nodelet interfaces Draco3 robot hardware and controller
+        </description>
+    </class>
+</library>
+

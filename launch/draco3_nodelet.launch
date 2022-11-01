@@ -1,0 +1,14 @@
+<!--<launch>-->
+  <!--<node pkg="nodelet" type="nodelet" name="standalone_nodelet" args="manager" output="screen"/>-->
+  <!--<node pkg="nodelet" type="nodelet" name="draco3_nodelet" args="load draco3_nodelet/Draco3Nodelet standalone_nodelet" output="screen"/>-->
+<!--</launch>-->
+
+<launch>
+  <arg name="enforced_loop_rate" default="800"/>
+
+  <param name="/synapse/enforced_loop_rate" value="$(arg enforced_loop_rate)"/>
+  <include file="$(find synapse)/launch/synapse.launch"/>
+  <node pkg="nodelet" type="nodelet" name="Draco3Nodelet" args="load draco3_nodelet/Draco3Nodelet synapse_group --no-bond" output="screen">
+  </node>
+
+</launch>
