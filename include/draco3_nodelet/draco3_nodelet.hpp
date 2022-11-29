@@ -39,25 +39,35 @@ private:
   // methods
   void _LoadConfigFile();
   void _InitializePlaceHolders();
-  void _Callback(const std_msgs::String::ConstPtr &input);
+
   void _RegisterData();
   void _SetGainsAndLimits();
+  void _ClearFaults();
   void _TurnOffMotors();
   void _TurnOnMotorCurrent();
   void _TurnOnJointImpedance();
-  void _ClearFaults();
+  void _TurnOnTargetJointImpedance();
+  void _ConstructRPC();
+  void _DestructRPC();
 
   void _ProcessServiceCalls();
   void _ExecuteSafeCommand();
+
   void _CopyData();
   void _CopyCommand();
 
+  // service call callback functions
+  void _Callback(const std_msgs::String::ConstPtr &input);
   bool _FaultHandlerCallback(apptronik_srvs::Bool::Request &req,
                              apptronik_srvs::Bool::Response &res);
   bool _FakeEstopHandlerCallback(apptronik_srvs::Bool::Request &req,
                                  apptronik_srvs::Bool::Response &res);
   bool _MotorModeHandlerCallback(apptronik_srvs::Int8::Request &req,
                                  apptronik_srvs::Int8::Response &res);
+  bool _RPCHandlerCallback(apptronik_srvs::Int8::Request &req,
+                           apptronik_srvs::Int8::Response &res);
+  bool _GainsAndLimitsHandlerCallback(apptronik_srvs::Bool::Request &req,
+                                      apptronik_srvs::Bool::Response &res);
 
   template <class SrvType>
   void _CallGetService(const std::string &slave_name,
@@ -80,6 +90,8 @@ private:
   ros::ServiceServer fault_handler_;
   ros::ServiceServer fake_estop_handler_;
   ros::ServiceServer motor_mode_handler_;
+  ros::ServiceServer rpc_handler_;
+  ros::ServiceServer gains_limits_handler_;
 
   // RegisterData
   std::vector<std::string> axons_;
@@ -136,6 +148,12 @@ private:
   bool b_motor_off_mode_;
   bool b_motor_current_mode_;
   bool b_joint_impedance_mode_;
+  bool b_construct_rpc_;
+  bool b_destruct_rpc_;
+  bool b_set_motor_gains_limits_;
+  bool b_target_joint_impedance_mode_;
+
+  bool b_rpc_alive_;
 
   // clock instance
   Clock clock_;

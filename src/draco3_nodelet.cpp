@@ -55,7 +55,15 @@ Draco3Nodelet::Draco3Nodelet() {
 
   b_clear_faults_ = false;
   b_fake_estop_released_ = false;
+  b_motor_off_mode_ = false;
+  b_motor_current_mode_ = false;
+  b_joint_impedance_mode_ = false;
+  b_construct_rpc_ = false;
+  b_destruct_rpc_ = false;
+  b_set_motor_gains_limits_ = false;
+  b_target_joint_impedance_mode_ = false;
 
+  b_rpc_alive_ = true;
   clock_ = Clock();
 
   draco_interface_ = new DracoInterface();
@@ -122,7 +130,7 @@ void Draco3Nodelet::spinThread() {
   // add debug variables for the nodelet memeber variables
   //=============================================================
   debug_interface_->addPrimitive(&ctrl_computation_time_,
-                                 "pnc_computation_time");
+                                 "rpc_computation_time");
   debug_interface_->addEigen(&Q_0_imu_.coeffs(), "Q_0_imu",
                              {"x", "y", "z", "w"});
   debug_interface_->addEigen(&ang_vel_0_imu_, "ang_vel_0_imu", {"x", "y", "z"});
@@ -136,9 +144,14 @@ void Draco3Nodelet::spinThread() {
   fault_handler_ = nh_.advertiseService(
       "/fault_handler", &Draco3Nodelet::_FaultHandlerCallback, this);
   fake_estop_handler_ = nh_.advertiseService(
-      "/fake_estop_handler_", &Draco3Nodelet::_FakeEstopHandlerCallback, this);
+      "/fake_estop_handler", &Draco3Nodelet::_FakeEstopHandlerCallback, this);
   motor_mode_handler_ = nh_.advertiseService(
-      "/motor_mode_handler_", &Draco3Nodelet::_MotorModeHandlerCallback, this);
+      "/motor_mode_handler", &Draco3Nodelet::_MotorModeHandlerCallback, this);
+  rpc_handler_ = nh_.advertiseService(
+      "/rpc_handler", &Draco3Nodelet::_RPCHandlerCallback, this);
+  gains_limits_handler_ = nh_.advertiseService(
+      "/gains_limits_handler", &Draco3Nodelet::_GainsAndLimitsHandlerCallback,
+      this);
 
   // Create a publisher topic
   pub_ = nh_.advertise<std_msgs::String>("ros_out", 10);
@@ -165,12 +178,16 @@ void Draco3Nodelet::spinThread() {
 
     _CopyData(); // copy data
 
-    if (sync_->printIndicatedFaults() && !b_fake_estop_released_)
+    if (sync_->printIndicatedFaults() && !b_fake_estop_released_) {
       _ExecuteSafeCommand();
-    else {
-      if (motor_control_mode_ == control_mode::kMotorCurrent)
+    } else {
+      if (motor_control_mode_ == control_mode::kMotorCurrent) {
         _ExecuteSafeCommand();
-      else {
+      } else {
+        std::cout << "--------------------------" << std::endl;
+        std::cout << "I'm in the getcommand loop" << std::endl;
+        std::cout << "motor control mode: " << motor_control_mode_ << std::endl;
+
         if (b_measure_computation_time_)
           clock_.Start();
         draco_interface_->GetCommand(draco_sensor_data_, draco_command_);
@@ -185,13 +202,6 @@ void Draco3Nodelet::spinThread() {
     debug_interface_->updateDebug();
   }
   sync_->awaitShutdownComplete();
-}
-
-void Draco3Nodelet::_Callback(const std_msgs::String::ConstPtr &input) {
-  std_msgs::String output;
-  output.data = input->data;
-  ROS_INFO("msg data = %s", output.data.c_str());
-  pub_.publish(output);
 }
 
 void Draco3Nodelet::_RegisterData() {
@@ -311,12 +321,20 @@ void Draco3Nodelet::_SetGainsAndLimits() {
   }
 }
 
+void Draco3Nodelet::_ClearFaults() {
+  ROS_INFO("Draco3Nodelet::_ClearFaults()");
+  for (int i = 0; i < num_joints_; i++) {
+    sync_->clearFaults(axons_[i]);
+    sleep(sleep_time_);
+  }
+}
+
 void Draco3Nodelet::_TurnOffMotors() {
+  b_fake_estop_released_ = false;
   for (int i = 0; i < num_joints_; i++) {
     sync_->changeMode("OFF", axons_[i]);
     sleep(sleep_time_);
   }
-  b_motor_off_mode_ = false;
 }
 
 void Draco3Nodelet::_TurnOnMotorCurrent() {
@@ -324,25 +342,41 @@ void Draco3Nodelet::_TurnOnMotorCurrent() {
     sync_->changeMode("MOTOR_CURRENT", axons_[i]);
     sleep(1.0);
   }
-  b_motor_current_mode_ = false;
 }
 
 void Draco3Nodelet::_TurnOnJointImpedance() {
-  for (int i = 0; i < num_joints_; i++) {
-    sync_->changeMode("JOINT_IMPEDANCE", axons_[i]);
-    sleep(sleep_time_);
-  }
-  b_joint_impedance_mode_ = false;
-  // TODO: construct & destruct rpc
+  if (b_rpc_alive_) {
+    for (int i = 0; i < num_joints_; i++) {
+      sync_->changeMode("JOINT_IMPEDANCE", axons_[i]);
+      sleep(sleep_time_);
+    }
+  } else
+    ROS_INFO("[[WARNING]] rpc is not constructed. Please contstruct rpc");
 }
 
-void Draco3Nodelet::_ClearFaults() {
-  ROS_INFO("Draco3Nodelet::_ClearFaults()");
-  for (int i = 0; i < num_joints_; i++) {
-    sync_->clearFaults(axons_[i]);
+void Draco3Nodelet::_TurnOnTargetJointImpedance() {
+  b_fake_estop_released_ = true;
+  if (b_rpc_alive_) {
+    sync_->changeMode("JOINT_IMPEDANCE", target_joint_name_);
     sleep(sleep_time_);
-  }
-  b_clear_faults_ = false;
+  } else
+    ROS_INFO("[[WARNING]] rpc is not constructed. Please contstruct rpc");
+}
+
+void Draco3Nodelet::_ConstructRPC() {
+  if (!b_rpc_alive_) {
+    draco_interface_ = new DracoInterface();
+    b_rpc_alive_ = true;
+  } else
+    ROS_INFO("[[WARNING]] rpc is already constructed");
+}
+
+void Draco3Nodelet::_DestructRPC() {
+  if (b_rpc_alive_) {
+    delete draco_interface_;
+    b_rpc_alive_ = false;
+  } else
+    ROS_INFO("[[WARNING]] rpc is already destructed");
 }
 
 void Draco3Nodelet::_LoadConfigFile() {
@@ -372,15 +406,39 @@ void Draco3Nodelet::_LoadConfigFile() {
 }
 
 void Draco3Nodelet::_ProcessServiceCalls() {
-
-  if (b_clear_faults_)
+  if (b_clear_faults_) {
     _ClearFaults();
-  if (b_motor_off_mode_)
+    b_clear_faults_ = false;
+  }
+  if (b_motor_off_mode_) {
     _TurnOffMotors();
-  if (b_motor_current_mode_)
+    b_motor_off_mode_ = false;
+  }
+  if (b_motor_current_mode_) {
     _TurnOnMotorCurrent();
-  if (b_joint_impedance_mode_)
+    b_motor_current_mode_ = false;
+  }
+  if (b_joint_impedance_mode_) {
     _TurnOnJointImpedance();
+    b_joint_impedance_mode_ = false;
+  }
+  if (b_construct_rpc_) {
+    _ConstructRPC();
+    b_construct_rpc_ = false;
+  }
+  if (b_destruct_rpc_) {
+    _DestructRPC();
+    b_destruct_rpc_ = false;
+  }
+  if (b_set_motor_gains_limits_) {
+    _SetGainsAndLimits();
+    b_set_motor_gains_limits_ = false;
+  }
+
+  if (b_target_joint_impedance_mode_) {
+    _TurnOnTargetJointImpedance();
+    b_target_joint_impedance_mode_ = false;
+  }
 }
 
 void Draco3Nodelet::_ExecuteSafeCommand() {
@@ -468,7 +526,7 @@ void Draco3Nodelet::_CopyCommand() {
       *ph_jvel_cmd_[i] = static_cast<float>(
           draco_command_->joint_vel_cmd_[pinocchio_robot_jidx_[i]] * 2.);
       *ph_jtrq_cmd_[i] = static_cast<float>(
-          draco_command_->joint_trq_cmd_[pinocchio_robot_jidx_[i]] * 2.);
+          draco_command_->joint_trq_cmd_[pinocchio_robot_jidx_[i]] / 2.);
     } else {
       *ph_jpos_cmd_[i] = static_cast<float>(
           draco_command_->joint_pos_cmd_[pinocchio_robot_jidx_[i]]);
@@ -508,6 +566,13 @@ void Draco3Nodelet::_InitializePlaceHolders() {
   ph_lfoot_sg_ = new float(0.);
 }
 
+void Draco3Nodelet::_Callback(const std_msgs::String::ConstPtr &input) {
+  std_msgs::String output;
+  output.data = input->data;
+  ROS_INFO("msg data = %s", output.data.c_str());
+  pub_.publish(output);
+}
+
 bool Draco3Nodelet::_FaultHandlerCallback(apptronik_srvs::Bool::Request &req,
                                           apptronik_srvs::Bool::Response &res) {
   b_clear_faults_ = req.set_data;
@@ -529,17 +594,51 @@ bool Draco3Nodelet::_MotorModeHandlerCallback(
     apptronik_srvs::Int8::Request &req, apptronik_srvs::Int8::Response &res) {
   int data = req.set_data;
   if (data == 0) {
+    std::cout << "Change to [[MOTOR_OFF]] Mode" << std::endl;
     b_motor_off_mode_ = true;
-    motor_control_mode_ == control_mode::kOff;
-    ROS_INFO("Change to [[MOTOR_OFF]] Mode")
+    motor_control_mode_ = control_mode::kOff;
   } else if (data == 1) {
+    std::cout << "Change to [[MOTOR_CURRENT]] Mode" << std::endl;
     b_motor_current_mode_ = true;
-    motor_control_mode_ == control_mode::kMotorCurrent;
-    ROS_INFO("Change to [[MOTOR_CURRENT]] Mode");
+    motor_control_mode_ = control_mode::kMotorCurrent;
   } else if (data == 2) {
-    // TODO: joint impedance mode
+    ROS_INFO("Change to [[JOINT_IMPEDNACE]] Mode");
+    b_joint_impedance_mode_ = true;
+    motor_control_mode_ = control_mode::kJointImpedance;
+  } else if (data == 3) {
+    ROS_INFO("Change to target joint [[JOINT_IMPEDNACE]] Mode");
+    b_target_joint_impedance_mode_ = true;
+    motor_control_mode_ = control_mode::kJointImpedance;
+  } else {
+    ROS_INFO("[[WARNING]] Invalid Data Received in MotorModeHandler");
+    return false;
   }
 
+  return true;
+}
+
+bool Draco3Nodelet::_RPCHandlerCallback(apptronik_srvs::Int8::Request &req,
+                                        apptronik_srvs::Int8::Response &res) {
+  int data = req.set_data;
+  if (data == 0) {
+    b_construct_rpc_ = true;
+    ROS_INFO("[[RPC Constructed]]");
+  } else if (data == 1) {
+    b_destruct_rpc_ = true;
+    ROS_INFO("[[RPC Destructed]]");
+  } else {
+    ROS_INFO("[[WARNING]] Invalid Data Received in MotorModeHandler");
+    return false;
+  }
+
+  return true;
+}
+
+bool Draco3Nodelet::_GainsAndLimitsHandlerCallback(
+    apptronik_srvs::Bool::Request &req, apptronik_srvs::Bool::Response &res) {
+  b_set_motor_gains_limits_ = req.set_data;
+  if (b_set_motor_gains_limits_)
+    ROS_INFO("[[Reset Gains and Motor Current Limits]]");
   return true;
 }
 
