@@ -178,16 +178,16 @@ void Draco3Nodelet::spinThread() {
 
     _CopyData(); // copy data
 
+    if (b_sim_)
+      ROS_INFO("Please Destruct RPC -> change ||b_sim|| to FALSE -> reset "
+               "gains and limits"); // for safety
+
     if (sync_->printIndicatedFaults() && !b_fake_estop_released_) {
       _ExecuteSafeCommand();
     } else {
       if (motor_control_mode_ == control_mode::kMotorCurrent) {
         _ExecuteSafeCommand();
       } else {
-        std::cout << "--------------------------" << std::endl;
-        std::cout << "I'm in the getcommand loop" << std::endl;
-        std::cout << "motor control mode: " << motor_control_mode_ << std::endl;
-
         if (b_measure_computation_time_)
           clock_.Start();
         draco_interface_->GetCommand(draco_sensor_data_, draco_command_);
@@ -277,6 +277,9 @@ void Draco3Nodelet::_RegisterData() {
 
 void Draco3Nodelet::_SetGainsAndLimits() {
   ROS_INFO("Draco3Nodelet::_SetGainsAndLimits()");
+
+  this->_LoadConfigFile(); // reload changed yaml node
+
   try {
     bool b_conservative =
         util::ReadParameter<bool>(nodelet_cfg_["service_call"], "conservative");
@@ -289,19 +292,17 @@ void Draco3Nodelet::_SetGainsAndLimits() {
             nodelet_cfg_["service_call"][axons_[i]], "weak_kp");
         *(ph_kd_cmd_[i]) = util::ReadParameter<float>(
             nodelet_cfg_["service_call"][axons_[i]], "weak_kd");
-
-        // for current limit srv call
         srv_float_current_limit.request.set_data = util::ReadParameter<float>(
-            nodelet_cfg_["service_call"][axons_[i]], "weak_current_limit");
+            nodelet_cfg_["service_call"][axons_[i]],
+            "weak_current_limit"); // for current limit srv call
       } else {
         *(ph_kp_cmd_[i]) = util::ReadParameter<float>(
             nodelet_cfg_["service_call"][axons_[i]], "kp");
         *(ph_kd_cmd_[i]) = util::ReadParameter<float>(
             nodelet_cfg_["service_call"][axons_[i]], "kd");
-
-        // for current limit srv call
         srv_float_current_limit.request.set_data = util::ReadParameter<float>(
-            nodelet_cfg_["service_call"][axons_[i]], "current_limit");
+            nodelet_cfg_["service_call"][axons_[i]],
+            "current_limit"); // for current limit srv call
       }
       _CallSetService(axons_[i],
                       "Limits__Motor__Effort__Saturate__Relative_val",
@@ -319,7 +320,7 @@ void Draco3Nodelet::_SetGainsAndLimits() {
     std::cerr << "Error Readinig Parameter [" << ex.what() << "] at file: ["
               << __FILE__ << "]" << std::endl;
   }
-}
+} // namespace draco3_nodelet
 
 void Draco3Nodelet::_ClearFaults() {
   ROS_INFO("Draco3Nodelet::_ClearFaults()");
@@ -392,8 +393,8 @@ void Draco3Nodelet::_LoadConfigFile() {
     b_measure_computation_time_ =
         util::ReadParameter<bool>(nodelet_cfg_, "b_measure_computation_time");
 
-    b_sim_ = util::ReadParameter<bool>(rpc_cfg_, "b_sim");
-    assert(b_sim_ == false);
+    b_sim_ =
+        util::ReadParameter<bool>(rpc_cfg_, "b_sim"); // this should be false
 
   } catch (const YAML::ParserException &ex) {
     std::cerr << "Error Readinig Parameter [" << ex.what() << "] at file: ["
@@ -443,10 +444,10 @@ void Draco3Nodelet::_ProcessServiceCalls() {
 
 void Draco3Nodelet::_ExecuteSafeCommand() {
   for (int i = 0; i < num_joints_; i++) {
-    *ph_jpos_cmd_[i] = *ph_jpos_data_[i];
-    *ph_jvel_cmd_[i] = 0.;
-    *ph_jtrq_cmd_[i] = 0.;
-    *ph_current_cmd_[i] = 0.;
+    *(ph_jpos_cmd_[i]) = *(ph_jpos_data_[i]);
+    *(ph_jvel_cmd_[i]) = 0.;
+    *(ph_jtrq_cmd_[i]) = 0.;
+    *(ph_current_cmd_[i]) = 0.;
   }
 }
 
@@ -478,9 +479,10 @@ void Draco3Nodelet::_CopyData() {
   //=============================================================
   for (int i = 0; i < num_joints_; i++) {
     float mom_arm =
-        actuator_speed_ratio_[i] * (*ph_linkage_speed_ratio_data_[i]);
-    diff_jpos_mjpos_[i] = *ph_jpos_data_[i] - motor_pos_polarity_[i] *
-                                                  (*ph_mpos_data_[i]) / mom_arm;
+        actuator_speed_ratio_[i] * (*(ph_linkage_speed_ratio_data_[i]));
+    diff_jpos_mjpos_[i] = *(ph_jpos_data_[i]) - motor_pos_polarity_[i] *
+                                                    (*(ph_mpos_data_[i])) /
+                                                    mom_arm;
   }
 
   //=============================================================
@@ -495,22 +497,23 @@ void Draco3Nodelet::_CopyData() {
   // Process joint pos, vel MISO data
   //=============================================================
   for (int i = 0; i < num_joints_; i++) {
-    if (pinocchio_robot_jidx_[i] == l_knee_fe_jd || r_knee_fe_jd) {
+    if (pinocchio_robot_jidx_[i] == l_knee_fe_jd ||
+        pinocchio_robot_jidx_[i] == r_knee_fe_jd) {
       // process rolling contact joints (jp & jd)
       draco_sensor_data_->joint_pos_[pinocchio_robot_jidx_[i]] =
-          static_cast<double>(*ph_jpos_data_[i]) / 2.;
+          static_cast<double>(*(ph_jpos_data_[i])) / 2.;
       draco_sensor_data_->joint_pos_[pinocchio_robot_jidx_[i] - 1] =
-          static_cast<double>(*ph_jpos_data_[i]) / 2.;
+          static_cast<double>(*(ph_jpos_data_[i])) / 2.;
       draco_sensor_data_->joint_vel_[pinocchio_robot_jidx_[i]] =
-          static_cast<double>(*ph_jvel_data_[i]) / 2.;
+          static_cast<double>(*(ph_jvel_data_[i])) / 2.;
       draco_sensor_data_->joint_vel_[pinocchio_robot_jidx_[i] - 1] =
-          static_cast<double>(*ph_jvel_data_[i]) / 2.;
+          static_cast<double>(*(ph_jvel_data_[i])) / 2.;
     } else {
       // process other joints
       draco_sensor_data_->joint_pos_[pinocchio_robot_jidx_[i]] =
-          *ph_jpos_data_[i];
+          static_cast<double>(*(ph_jpos_data_[i]));
       draco_sensor_data_->joint_vel_[pinocchio_robot_jidx_[i]] =
-          *ph_jvel_data_[i];
+          static_cast<double>(*(ph_jvel_data_[i]));
     }
   }
 }
@@ -520,19 +523,20 @@ void Draco3Nodelet::_CopyCommand() {
   // Process joint pos, vel, trq MOSI data
   //=============================================================
   for (int i = 0; i < num_joints_; i++) {
-    if (pinocchio_robot_jidx_[i] == l_knee_fe_jd || r_knee_fe_jd) {
-      *ph_jpos_cmd_[i] = static_cast<float>(
+    if (pinocchio_robot_jidx_[i] == l_knee_fe_jd ||
+        pinocchio_robot_jidx_[i] == r_knee_fe_jd) {
+      *(ph_jpos_cmd_[i]) = static_cast<float>(
           draco_command_->joint_pos_cmd_[pinocchio_robot_jidx_[i]] * 2.);
-      *ph_jvel_cmd_[i] = static_cast<float>(
+      *(ph_jvel_cmd_[i]) = static_cast<float>(
           draco_command_->joint_vel_cmd_[pinocchio_robot_jidx_[i]] * 2.);
-      *ph_jtrq_cmd_[i] = static_cast<float>(
+      *(ph_jtrq_cmd_[i]) = static_cast<float>(
           draco_command_->joint_trq_cmd_[pinocchio_robot_jidx_[i]] / 2.);
     } else {
-      *ph_jpos_cmd_[i] = static_cast<float>(
+      *(ph_jpos_cmd_[i]) = static_cast<float>(
           draco_command_->joint_pos_cmd_[pinocchio_robot_jidx_[i]]);
-      *ph_jvel_cmd_[i] = static_cast<float>(
+      *(ph_jvel_cmd_[i]) = static_cast<float>(
           draco_command_->joint_vel_cmd_[pinocchio_robot_jidx_[i]]);
-      *ph_jtrq_cmd_[i] = static_cast<float>(
+      *(ph_jtrq_cmd_[i]) = static_cast<float>(
           draco_command_->joint_trq_cmd_[pinocchio_robot_jidx_[i]]);
     }
   }
@@ -594,11 +598,11 @@ bool Draco3Nodelet::_MotorModeHandlerCallback(
     apptronik_srvs::Int8::Request &req, apptronik_srvs::Int8::Response &res) {
   int data = req.set_data;
   if (data == 0) {
-    std::cout << "Change to [[MOTOR_OFF]] Mode" << std::endl;
+    ROS_INFO("Change to [[MOTOR_OFF]] Mode");
     b_motor_off_mode_ = true;
     motor_control_mode_ = control_mode::kOff;
   } else if (data == 1) {
-    std::cout << "Change to [[MOTOR_CURRENT]] Mode" << std::endl;
+    ROS_INFO("Change to [[MOTOR_CURRENT]] Mode");
     b_motor_current_mode_ = true;
     motor_control_mode_ = control_mode::kMotorCurrent;
   } else if (data == 2) {
