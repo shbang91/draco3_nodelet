@@ -17,6 +17,7 @@
 #include "configuration.hpp"
 #include "controller/draco_controller/draco_definition.hpp"
 #include "controller/draco_controller/draco_interface.hpp"
+#include "controller/interrupt.hpp"
 #include "util/clock.hpp"
 #include "util/util.hpp"
 

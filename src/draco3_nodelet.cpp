@@ -179,8 +179,9 @@ void Draco3Nodelet::spinThread() {
     _CopyData(); // copy data
 
     if (b_sim_)
-      ROS_INFO("Please Destruct RPC -> change ||b_sim|| to FALSE -> reset "
-               "gains and limits"); // for safety
+      ROS_INFO(
+          "Please do 1) DestructRPC -> 2) change b_sim in pnc.yaml to FALSE -> "
+          "3) ConstructRPC -> 4) ResetGainsAndLimits"); // for safety
 
     if (sync_->printIndicatedFaults() && !b_fake_estop_released_) {
       _ExecuteSafeCommand();
@@ -630,6 +631,10 @@ bool Draco3Nodelet::_RPCHandlerCallback(apptronik_srvs::Int8::Request &req,
   } else if (data == 1) {
     b_destruct_rpc_ = true;
     ROS_INFO("[[RPC Destructed]]");
+  } else if (data == 2) {
+    draco_interface_->interrupt_->PressOne(); // com swaying
+  } else if (data == 3) {
+    draco_interface_->interrupt_->PressFive(); // inplace walk
   } else {
     ROS_INFO("[[WARNING]] Invalid Data Received in MotorModeHandler");
     return false;
