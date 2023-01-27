@@ -22,6 +22,7 @@ find_package(catkin REQUIRED COMPONENTS
   roslib
   rt_utils
   tf2_eigen
+  std_msgs
 )
 
 ## System dependencies are found with CMake's conventions
@@ -61,18 +62,17 @@ find_package(catkin REQUIRED COMPONENTS
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 ## Generate messages in the 'msg' folder
-# add_message_files(
-#   FILES
-#   Message1.msg
-#   Message2.msg
-# )
+ add_message_files(
+   FILES
+   JointGains.msg
+ )
 
 ## Generate services in the 'srv' folder
-# add_service_files(
-#   FILES
-#   Service1.srv
+ add_service_files(
+   FILES
+   TuneJointGainsSrv.srv
 #   Service2.srv
-# )
+ )
 
 ## Generate actions in the 'action' folder
 # add_action_files(
@@ -82,10 +82,10 @@ find_package(catkin REQUIRED COMPONENTS
 # )
 
 ## Generate added messages and services with any dependencies listed here
-# generate_messages(
-#   DEPENDENCIES
-#   std_msgs  # Or other packages containing msgs
-# )
+ generate_messages(
+   DEPENDENCIES
+   std_msgs  # Or other packages containing msgs
+ )
 
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
@@ -119,7 +119,8 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package(
   INCLUDE_DIRS include
 #  LIBRARIES draco3_nodelet
-  CATKIN_DEPENDS cortex_utils message_generation message_runtime nodelet pluginlib roscpp roslib rt_utils tf2_eigen
+  CATKIN_DEPENDS cortex_utils message_generation message_runtime nodelet
+  pluginlib roscpp roslib rt_utils tf2_eigen std_msgs
 #  DEPENDS system_lib
 )
 
@@ -134,6 +135,7 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
   ${Boost_INCLUDE_DIRS}
 )
+
 
 include_directories(
     ${DRACO_RPC_INCLUDE_DIRS}
