@@ -15,6 +15,17 @@ Draco3Nodelet::Draco3Nodelet() {
             "L_Elbow",       "L_Wrist_Roll",  "L_Wrist_Pitch", "R_Shoulder_FE",
             "R_Shoulder_AA", "R_Shoulder_IE", "R_Elbow",       "R_Wrist_Roll",
             "R_Wrist_Pitch"};
+  joint_idx_map_ = {
+      {"Neck_Pitch", 0},     {"R_Hip_IE", 1},       {"R_Hip_AA", 2},
+      {"R_Hip_FE", 3},       {"R_Knee_FE", 4},      {"R_Ankle_FE", 5},
+      {"R_Ankle_IE", 6},     {"L_Hip_IE", 7},       {"L_Hip_AA", 8},
+      {"L_Hip_FE", 9},       {"L_Knee_FE", 10},     {"L_Ankle_FE", 11},
+      {"L_Ankle_IE", 12},    {"L_Shoulder_FE", 13}, {"L_Shoulder_AA", 14},
+      {"L_Shoulder_IE", 15}, {"L_Elbow", 16},       {"L_Wrist_Roll", 17},
+      {"L_Wrist_Pitch", 18}, {"R_Shoulder_FE", 19}, {"R_Shoulder_AA", 20},
+      {"R_Shoulder_IE", 21}, {"R_Elbow", 22},       {"R_Wrist_Roll", 23},
+      {"R_Wrist_Pitch", 24}};
+
   medullas_ = {"Medulla", "Medulla_V4"};
   sensillums_ = {"Sensillum_v2"};
 
@@ -40,6 +51,8 @@ Draco3Nodelet::Draco3Nodelet() {
   ph_current_cmd_.resize(num_joints_);
   ph_kp_cmd_.resize(num_joints_);
   ph_kd_cmd_.resize(num_joints_);
+  joint_kp_cmd_vector_.resize(num_joints_);
+  joint_kd_cmd_vector_.resize(num_joints_);
 
   actuator_speed_ratio_.resize(num_joints_);
   motor_pos_polarity_.resize(num_joints_);
@@ -152,6 +165,8 @@ void Draco3Nodelet::spinThread() {
   gains_limits_handler_ = nh_.advertiseService(
       "/gains_limits_handler", &Draco3Nodelet::_GainsAndLimitsHandlerCallback,
       this);
+  joint_gains_handler_ = nh_.advertiseService(
+      "/joint_gains_handler", &Draco3Nodelet::_JointGainsHandlerCallback, this);
 
   // Create a publisher topic
   pub_ = nh_.advertise<std_msgs::String>("ros_out", 10);
@@ -185,6 +200,7 @@ void Draco3Nodelet::spinThread() {
 
     if (sync_->printIndicatedFaults() && !b_fake_estop_released_) {
       _ExecuteSafeCommand();
+      //_CopyJointGainsCommand();
     } else {
       if (motor_control_mode_ == control_mode::kMotorCurrent) {
         _ExecuteSafeCommand();
@@ -305,6 +321,8 @@ void Draco3Nodelet::_SetGainsAndLimits() {
             nodelet_cfg_["service_call"][axons_[i]],
             "current_limit"); // for current limit srv call
       }
+      joint_kp_cmd_vector_[i] = *(ph_kp_cmd_[i]);
+      joint_kd_cmd_vector_[i] = *(ph_kd_cmd_[i]);
       _CallSetService(axons_[i],
                       "Limits__Motor__Effort__Saturate__Relative_val",
                       srv_float_current_limit);
@@ -540,6 +558,15 @@ void Draco3Nodelet::_CopyCommand() {
       *(ph_jtrq_cmd_[i]) = static_cast<float>(
           draco_command_->joint_trq_cmd_[pinocchio_robot_jidx_[i]]);
     }
+    *(ph_kp_cmd_[i]) = joint_kp_cmd_vector_[i];
+    *(ph_kd_cmd_[i]) = joint_kd_cmd_vector_[i];
+  }
+}
+
+void Draco3Nodelet::_CopyJointGainsCommand() {
+  for (int i = 0; i < num_joints_; i++) {
+    *(ph_kp_cmd_[i]) = joint_kp_cmd_vector_[i];
+    *(ph_kd_cmd_[i]) = joint_kd_cmd_vector_[i];
   }
 }
 
@@ -651,6 +678,26 @@ bool Draco3Nodelet::_GainsAndLimitsHandlerCallback(
   return true;
 }
 
+bool Draco3Nodelet::_JointGainsHandlerCallback(
+    draco3_nodelet::TuneJointGainsSrv::Request &req,
+    draco3_nodelet::TuneJointGainsSrv::Response &res) {
+
+  std::string joint_name = req.joint.joint_name;
+  int jidx = joint_idx_map_[req.joint.joint_name];
+
+  joint_kp_cmd_vector_[jidx] = req.joint.kp.data;
+  joint_kd_cmd_vector_[jidx] = req.joint.kd.data;
+
+  std::cout << "joint name: " << req.joint.joint_name << " joint idx: " << jidx
+            << " kp: " << joint_kp_cmd_vector_[jidx]
+            << " kd: " << joint_kd_cmd_vector_[jidx] << std::endl;
+
+  res.success = true;
+
+  ROS_INFO("[[Tune Joint Gains Done]]");
+
+  return res.success;
+}
 template <class SrvType>
 void Draco3Nodelet::_CallSetService(const std::string &slave_name,
                                     const std::string &srv_name,

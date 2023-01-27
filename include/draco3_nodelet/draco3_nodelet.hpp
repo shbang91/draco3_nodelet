@@ -14,6 +14,8 @@
 #include <iostream>
 #include <stdexcept>
 
+#include "draco3_nodelet/TuneJointGainsSrv.h"
+
 #include "configuration.hpp"
 #include "controller/draco_controller/draco_definition.hpp"
 #include "controller/draco_controller/draco_interface.hpp"
@@ -56,6 +58,7 @@ private:
 
   void _CopyData();
   void _CopyCommand();
+  void _CopyJointGainsCommand();
 
   // service call callback functions
   void _Callback(const std_msgs::String::ConstPtr &input);
@@ -69,6 +72,9 @@ private:
                            apptronik_srvs::Int8::Response &res);
   bool _GainsAndLimitsHandlerCallback(apptronik_srvs::Bool::Request &req,
                                       apptronik_srvs::Bool::Response &res);
+  bool
+  _JointGainsHandlerCallback(draco3_nodelet::TuneJointGainsSrv::Request &req,
+                             draco3_nodelet::TuneJointGainsSrv::Response &res);
 
   template <class SrvType>
   void _CallGetService(const std::string &slave_name,
@@ -93,12 +99,14 @@ private:
   ros::ServiceServer motor_mode_handler_;
   ros::ServiceServer rpc_handler_;
   ros::ServiceServer gains_limits_handler_;
+  ros::ServiceServer joint_gains_handler_;
 
   // RegisterData
   std::vector<std::string> axons_;
   std::vector<std::string> medullas_;
   std::vector<std::string> sensillums_;
   std::vector<int> pinocchio_robot_jidx_;
+  std::unordered_map<std::string, int> joint_idx_map_;
 
   int num_joints_;
   int num_medullas_;
@@ -125,6 +133,8 @@ private:
   std::vector<float *> ph_current_cmd_;
   std::vector<float *> ph_kp_cmd_;
   std::vector<float *> ph_kd_cmd_;
+  std::vector<float> joint_kp_cmd_vector_;
+  std::vector<float> joint_kd_cmd_vector_;
 
   // misc
   std::vector<float> actuator_speed_ratio_;
