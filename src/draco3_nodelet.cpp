@@ -51,8 +51,6 @@ Draco3Nodelet::Draco3Nodelet() {
   ph_current_cmd_.resize(num_joints_);
   ph_kp_cmd_.resize(num_joints_);
   ph_kd_cmd_.resize(num_joints_);
-  joint_kp_cmd_vector_.resize(num_joints_);
-  joint_kd_cmd_vector_.resize(num_joints_);
 
   actuator_speed_ratio_.resize(num_joints_);
   motor_pos_polarity_.resize(num_joints_);
@@ -200,7 +198,6 @@ void Draco3Nodelet::spinThread() {
 
     if (sync_->printIndicatedFaults() && !b_fake_estop_released_) {
       _ExecuteSafeCommand();
-      //_CopyJointGainsCommand();
     } else {
       if (motor_control_mode_ == control_mode::kMotorCurrent) {
         _ExecuteSafeCommand();
@@ -307,34 +304,30 @@ void Draco3Nodelet::_SetGainsAndLimits() {
       if (b_conservative) {
         *(ph_kp_cmd_[i]) = util::ReadParameter<float>(
             nodelet_cfg_["service_call"][axons_[i]], "weak_kp");
+
         *(ph_kd_cmd_[i]) = util::ReadParameter<float>(
             nodelet_cfg_["service_call"][axons_[i]], "weak_kd");
+
         srv_float_current_limit.request.set_data = util::ReadParameter<float>(
             nodelet_cfg_["service_call"][axons_[i]],
             "weak_current_limit"); // for current limit srv call
       } else {
         *(ph_kp_cmd_[i]) = util::ReadParameter<float>(
             nodelet_cfg_["service_call"][axons_[i]], "kp");
+
         *(ph_kd_cmd_[i]) = util::ReadParameter<float>(
             nodelet_cfg_["service_call"][axons_[i]], "kd");
+
         srv_float_current_limit.request.set_data = util::ReadParameter<float>(
             nodelet_cfg_["service_call"][axons_[i]],
             "current_limit"); // for current limit srv call
       }
-      joint_kp_cmd_vector_[i] = *(ph_kp_cmd_[i]);
-      joint_kd_cmd_vector_[i] = *(ph_kd_cmd_[i]);
       _CallSetService(axons_[i],
                       "Limits__Motor__Effort__Saturate__Relative_val",
                       srv_float_current_limit);
       sleep(sleep_time_);
     }
 
-    // for (int i = 0; i < lower_leg_axons_.size(); ++i) {
-    // lb_low_level_kp_gains_[i] = util::ReadParameter<float>(
-    // nodelet_cfg_["service_call"][lower_body_joint_names_[i]], "kp");
-    // lb_low_level_kd_gains_[i] = util::ReadParameter<float>(
-    // nodelet_cfg_["service_call"][lower_body_joint_names_[i]], "kd");
-    //}
   } catch (std::runtime_error &ex) {
     std::cerr << "Error Readinig Parameter [" << ex.what() << "] at file: ["
               << __FILE__ << "]" << std::endl;
@@ -558,15 +551,6 @@ void Draco3Nodelet::_CopyCommand() {
       *(ph_jtrq_cmd_[i]) = static_cast<float>(
           draco_command_->joint_trq_cmd_[pinocchio_robot_jidx_[i]]);
     }
-    *(ph_kp_cmd_[i]) = joint_kp_cmd_vector_[i];
-    *(ph_kd_cmd_[i]) = joint_kd_cmd_vector_[i];
-  }
-}
-
-void Draco3Nodelet::_CopyJointGainsCommand() {
-  for (int i = 0; i < num_joints_; i++) {
-    *(ph_kp_cmd_[i]) = joint_kp_cmd_vector_[i];
-    *(ph_kd_cmd_[i]) = joint_kd_cmd_vector_[i];
   }
 }
 
@@ -685,12 +669,25 @@ bool Draco3Nodelet::_JointGainsHandlerCallback(
   std::string joint_name = req.joint.joint_name;
   int jidx = joint_idx_map_[req.joint.joint_name];
 
-  joint_kp_cmd_vector_[jidx] = req.joint.kp.data;
-  joint_kd_cmd_vector_[jidx] = req.joint.kd.data;
+  // TODO: interpolate command
+  // float kp = *(ph_kp_cmd_[jidx]);
+  // float kd = *(ph_kd_cmd_[jidx]);
+  // float new_kp = req.joint.kp.data;
+  // float new_kd = req.joint.kd.data;
+  // float kp_interpol(0.), kd_interpol(0.);
+  // int count(1000);
+  // for (int i = 0; i <= count; ++i) {
+  // kp_interpol = kp + (new_kp - kp) / count * i;
+  //*(ph_kp_cmd_[jidx]) = kp_interpol;
+  // kd_interpol = kd + (new_kd - kd) / count * i;
+  //*(ph_kd_cmd_[jidx]) = kd_interpol;
+  //}
+  *(ph_kp_cmd_[jidx]) = req.joint.kp.data;
+  *(ph_kd_cmd_[jidx]) = req.joint.kd.data;
 
   std::cout << "joint name: " << req.joint.joint_name << " joint idx: " << jidx
-            << " kp: " << joint_kp_cmd_vector_[jidx]
-            << " kd: " << joint_kd_cmd_vector_[jidx] << std::endl;
+            << " kp: " << *(ph_kp_cmd_[jidx]) << " kd: " << *(ph_kd_cmd_[jidx])
+            << std::endl;
 
   res.success = true;
 

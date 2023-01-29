@@ -58,7 +58,6 @@ private:
 
   void _CopyData();
   void _CopyCommand();
-  void _CopyJointGainsCommand();
 
   // service call callback functions
   void _Callback(const std_msgs::String::ConstPtr &input);
@@ -133,8 +132,6 @@ private:
   std::vector<float *> ph_current_cmd_;
   std::vector<float *> ph_kp_cmd_;
   std::vector<float *> ph_kd_cmd_;
-  std::vector<float> joint_kp_cmd_vector_;
-  std::vector<float> joint_kd_cmd_vector_;
 
   // misc
   std::vector<float> actuator_speed_ratio_;
