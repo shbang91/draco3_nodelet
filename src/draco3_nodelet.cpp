@@ -165,6 +165,8 @@ void Draco3Nodelet::spinThread() {
       this);
   joint_gains_handler_ = nh_.advertiseService(
       "/joint_gains_handler", &Draco3Nodelet::_JointGainsHandlerCallback, this);
+  wbc_task_gains_handler_ = nh_.advertiseService(
+      "/task_gains_handler", &Draco3Nodelet::_TaskGainsHandlerCallback, this);
 
   // Create a publisher topic
   pub_ = nh_.advertise<std_msgs::String>("ros_out", 10);
@@ -643,9 +645,9 @@ bool Draco3Nodelet::_RPCHandlerCallback(apptronik_srvs::Int8::Request &req,
     b_destruct_rpc_ = true;
     ROS_INFO("[[RPC Destructed]]");
   } else if (data == 2) {
-    draco_interface_->interrupt_->PressOne(); // com swaying
+    draco_interface_->interrupt_handler_->PressOne(); // com swaying
   } else if (data == 3) {
-    draco_interface_->interrupt_->PressFive(); // inplace walk
+    draco_interface_->interrupt_handler_->PressFive(); // inplace walk
   } else {
     ROS_INFO("[[WARNING]] Invalid Data Received in MotorModeHandler");
     return false;
@@ -695,6 +697,37 @@ bool Draco3Nodelet::_JointGainsHandlerCallback(
 
   return res.success;
 }
+
+bool Draco3Nodelet::_TaskGainsHandlerCallback(
+    draco3_nodelet::TuneTaskWeightAndGainSrv::Request &req,
+    draco3_nodelet::TuneTaskWeightAndGainSrv::Response &res) {
+  std::string task_name = req.task.task_name;
+  auto req_w = req.task.weight;
+  auto req_kp = req.task.kp;
+  auto req_kd = req.task.kd;
+
+  Eigen::VectorXd w = Eigen::Map<Eigen::VectorXd>(req_w.data(), req_w.size());
+  Eigen::VectorXd kp =
+      Eigen::Map<Eigen::VectorXd>(req_kp.data(), req_kp.size());
+  Eigen::VectorXd kd =
+      Eigen::Map<Eigen::VectorXd>(req_kd.data(), req_kd.size());
+
+  if (req.task.task_name == "com_xy_task") {
+    auto req_ki = req.task.ki;
+    Eigen::VectorXd ki =
+        Eigen::Map<Eigen::VectorXd>(req_ki.data(), req_ki.size());
+
+    draco_interface_->task_gain_handler_->Trigger(task_name, w, kp, kd, ki);
+
+    res.success = true;
+  } else {
+    draco_interface_->task_gain_handler_->Trigger(task_name, w, kp, kd);
+    res.success = true;
+  }
+
+  return res.success;
+}
+
 template <class SrvType>
 void Draco3Nodelet::_CallSetService(const std::string &slave_name,
                                     const std::string &srv_name,

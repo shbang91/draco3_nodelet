@@ -15,11 +15,13 @@
 #include <stdexcept>
 
 #include "draco3_nodelet/TuneJointGainsSrv.h"
+#include "draco3_nodelet/TuneTaskWeightAndGainSrv.h"
 
 #include "configuration.hpp"
 #include "controller/draco_controller/draco_definition.hpp"
 #include "controller/draco_controller/draco_interface.hpp"
-#include "controller/interrupt.hpp"
+#include "controller/draco_controller/draco_task_gain_handler.hpp"
+#include "controller/interrupt_handler.hpp"
 #include "util/clock.hpp"
 #include "util/util.hpp"
 
@@ -74,6 +76,9 @@ private:
   bool
   _JointGainsHandlerCallback(draco3_nodelet::TuneJointGainsSrv::Request &req,
                              draco3_nodelet::TuneJointGainsSrv::Response &res);
+  bool _TaskGainsHandlerCallback(
+      draco3_nodelet::TuneTaskWeightAndGainSrv::Request &req,
+      draco3_nodelet::TuneTaskWeightAndGainSrv::Response &res);
 
   template <class SrvType>
   void _CallGetService(const std::string &slave_name,
@@ -99,6 +104,7 @@ private:
   ros::ServiceServer rpc_handler_;
   ros::ServiceServer gains_limits_handler_;
   ros::ServiceServer joint_gains_handler_;
+  ros::ServiceServer wbc_task_gains_handler_;
 
   // RegisterData
   std::vector<std::string> axons_;

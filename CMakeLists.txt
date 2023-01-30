@@ -65,12 +65,14 @@ find_package(catkin REQUIRED COMPONENTS
  add_message_files(
    FILES
    JointGains.msg
+   TaskWeightAndGain.msg
  )
 
 ## Generate services in the 'srv' folder
  add_service_files(
    FILES
    TuneJointGainsSrv.srv
+   TuneTaskWeightAndGainSrv.srv
 #   Service2.srv
  )
 
