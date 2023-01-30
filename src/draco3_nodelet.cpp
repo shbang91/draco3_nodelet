@@ -682,8 +682,8 @@ bool Draco3Nodelet::_JointGainsHandlerCallback(
   // kd_interpol = kd + (new_kd - kd) / count * i;
   //*(ph_kd_cmd_[jidx]) = kd_interpol;
   //}
-  *(ph_kp_cmd_[jidx]) = req.joint.kp.data;
-  *(ph_kd_cmd_[jidx]) = req.joint.kd.data;
+  *(ph_kp_cmd_[jidx]) = req.joint.kp;
+  *(ph_kd_cmd_[jidx]) = req.joint.kd;
 
   std::cout << "joint name: " << req.joint.joint_name << " joint idx: " << jidx
             << " kp: " << *(ph_kp_cmd_[jidx]) << " kd: " << *(ph_kd_cmd_[jidx])
